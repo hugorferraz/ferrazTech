@@ -39,6 +39,18 @@
             padding: 1.2rem 5%;
         }
 
+        .contact-logo-container {
+            display: flex;
+            justify-content: center; /* Centraliza horizontalmente no espaço esquerdo */
+            margin-top: 2.5rem;      /* Dá um respiro em relação aos itens de contato acima */
+        }
+
+        .contact-logo {
+            max-width: 380px; /* Tamanho máximo ideal para não exagerar */
+            width: 100%;       /* Redimensiona de forma fluida */
+            height: auto;
+        }
+
         .logo {
             font-size: 1.5rem;
             font-weight: 700;
