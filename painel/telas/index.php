@@ -1,35 +1,10 @@
 <?php
-// Conexão com o Banco de Dados
-$host = 'localhost';
-$dbname = 'ferraztech_db';
-$username = 'root';
-$password = '';
-
-$totalClientes = 0;
-$totalManutencoes = 0;
-$totalInstalacoesIrrigacao = 0;
-
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-    // 1. Conta total de clientes cadastrados
-    $stmtC = $pdo->query("SELECT COUNT(*) FROM clientes");
-    $totalClientes = $stmtC->fetchColumn();
-
-    // 2. Conta total de Manutenções na tabela orcamentos
-    $stmtM = $pdo->prepare("SELECT COUNT(*) FROM orcamentos WHERE tipo_solicitacao = ?");
-    $stmtM->execute(['Manutenção']);
-    $totalManutencoes = $stmtM->fetchColumn();
-
-    // 3. Conta total de Nova Instalação de Irrigação na tabela orcamentos
-    $stmtI = $pdo->prepare("SELECT COUNT(*) FROM orcamentos WHERE tipo_solicitacao = ?");
-    $stmtI->execute(['Nova Instalação de Irrigação']);
-    $totalInstalacoesIrrigacao = $stmtI->fetchColumn();
-
-} catch (Exception $e) {
-    // Caso dê algum erro, mantém os valores zerados para não quebrar a tela
-}
+require_once '../controllers/controller_index.php';
+$resultado = carregarDashboardIndex();
+$totalClientes = $resultado['totalClientes'];
+$totalManutencoes = $resultado['totalManutencoes'];
+$totalInstalacoesIrrigacao = $resultado['totalInstalacoesIrrigacao'];
+$erro_db = $resultado['erro_db'];
 ?>
 
 <!DOCTYPE html>

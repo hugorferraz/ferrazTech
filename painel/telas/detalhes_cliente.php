@@ -1,54 +1,15 @@
 <?php
-// Conexão com o Banco de Dados
-$host = 'localhost';
-$dbname = 'ferraztech_db';
-$username = 'root';
-$password = '';
+require_once '../controllers/controller_detalhes_cliente.php';
+$cliente_id = $_GET['id'] ?? null;
+$resultado = carregarDetalhesCliente($cliente_id);
 
-$clienteId = $_GET['id'] ?? null;
-$cliente = null;
-$enderecos = [];
-$agendamentos = [];
-$orcamentos = [];
-
-if (!$clienteId) {
-    header("Location: clientes.php");
-    exit;
-}
-
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-    // 1. Busca os dados do cliente
-    $stmtC = $pdo->prepare("SELECT * FROM clientes WHERE id = ?");
-    $stmtC->execute([$clienteId]);
-    $cliente = $stmtC->fetch(PDO::FETCH_ASSOC);
-
-    if (!$cliente) {
-        header("Location: clientes.php");
-        exit;
-    }
-
-    // 2. Busca todos os endereços vinculados
-    $stmtE = $pdo->prepare("SELECT * FROM enderecos WHERE cliente_id = ?");
-    $stmtE->execute([$clienteId]);
-    $enderecos = $stmtE->fetchAll(PDO::FETCH_ASSOC);
-
-    // 3. Busca agendamentos cruzando com endereços
-    $stmtA = $pdo->prepare("SELECT a.*, e.logradouro, e.numero FROM agendamentos a JOIN enderecos e ON a.endereco_id = e.id WHERE a.cliente_id = ? ORDER BY a.data_agendamento DESC");
-    $stmtA->execute([$clienteId]);
-    $agendamentos = $stmtA->fetchAll(PDO::FETCH_ASSOC);
-
-    // 4. Busca orçamentos vinculados
-    $stmtO = $pdo->prepare("SELECT * FROM orcamentos WHERE cliente_id = ? ORDER BY data_solicitacao DESC");
-    $stmtO->execute([$clienteId]);
-    $orcamentos = $stmtO->fetchAll(PDO::FETCH_ASSOC);
-
-} catch (Exception $e) {
-    $erro_db = "Erro ao carregar detalhes: " . $e->getMessage();
-}
+$cliente = $resultado['cliente'];
+$enderecos = $resultado['enderecos'];
+$orcamentos = $resultado['orcamentos'];
+$agendamentos = $resultado['agendamentos'];
+$erro_db = $resultado['erro_db'];
 ?>
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -162,7 +123,10 @@ try {
                         <tbody>
                             <?php foreach ($agendamentos as $ag): ?>
                                 <tr>
-                                    <td><?php echo date('d/m/Y H:i', strtotime($ag['data_agendamento'])); ?></td>
+                                    <td>
+                                        <strong>Início:</strong> <?php echo date('d/m/Y H:i', strtotime($ag['data_inicio'])); ?><br>
+                                        <strong>Término:</strong> <?php echo date('d/m/Y H:i', strtotime($ag['data_termino'])); ?>
+                                    </td>
                                     <td><strong><?php echo htmlspecialchars($ag['tipo_trabalho']); ?></strong></td>
                                     <td><?php echo htmlspecialchars($ag['logradouro']) . ', nº ' . htmlspecialchars($ag['numero']); ?></td>
                                     <td>
@@ -183,7 +147,7 @@ try {
         <!-- Seção de Produtos / Orçamentos -->
         <div style="margin-bottom: 10px;">
             <h3 style="color: #2c3e50; margin-bottom: 12px; font-size: 16px; display: flex; align-items: center; gap: 8px;">
-                📋 Orçamentos / Solicitações Web <span style="background: #e2e8f0; color: #334155; padding: 2px 8px; border-radius: 12px; font-size: 12px;"><?php echo count($orcamentos); ?></span>
+                📋 Solicitações Web <span style="background: #e2e8f0; color: #334155; padding: 2px 8px; border-radius: 12px; font-size: 12px;"><?php echo count($orcamentos); ?></span>
             </h3>
 
             <?php if (count($orcamentos) > 0): ?>

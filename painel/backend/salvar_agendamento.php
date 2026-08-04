@@ -30,7 +30,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         // --- 2. VALIDAÇÃO DE CONFLITO DE PERÍODO COM EXCEÇÃO INTELIGENTE ---
-        // Verifica se há colisão com serviços longos, ignorando caso o horário esteja dentro de uma exceção/janela aberta.
         $stmtConflito = $pdo->prepare("
             SELECT COUNT(*) FROM agendamentos a
             WHERE a.status != 'Cancelado' 

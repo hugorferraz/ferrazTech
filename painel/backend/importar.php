@@ -70,13 +70,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $cliente_id = $pdo->lastInsertId();
             }
 
-            // 2. Salva o Endereço vinculado ao Cliente
+            // 2. Salva o Endereço vinculado ao Cliente e captura o ID gerado
             $insertEndereco = $pdo->prepare("INSERT INTO enderecos (cliente_id, cep, logradouro, numero, bairro, cidade, estado) VALUES (?, ?, ?, ?, ?, ?, ?)");
             $insertEndereco->execute([$cliente_id, $cep, $logradouro, $numero, $bairro, $cidade, $estado]);
+            $endereco_id = $pdo->lastInsertId(); // <-- CAPTURA O ID DO ENDEREÇO
 
-            // 3. Salva o Orçamento na tabela `orcamentos`
-            $insertOrcamento = $pdo->prepare("INSERT INTO orcamentos (cliente_id, tipo_residencia, tipo_solicitacao, status) VALUES (?, ?, ?, 'Pendente')");
-            $insertOrcamento->execute([$cliente_id, $tipo_residencia, $tipo_solicitacao]);
+            // 3. Salva o Orçamento na tabela orcamentos
+            $insertOrcamento = $pdo->prepare("INSERT INTO orcamentos (cliente_id, endereco_id, tipo_residencia, tipo_solicitacao, status) VALUES (?, ?, ?, ?, 'Pendente')");
+            $insertOrcamento->execute([$cliente_id, $endereco_id, $tipo_residencia, $tipo_solicitacao]); // <-- SALVA O ENDEREÇO JUNTO
 
             $pdo->commit();
 
@@ -87,7 +88,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if (isset($pdo) && $pdo->inTransaction()) {
                 $pdo->rollBack();
             }
-            // Mostra o erro real na tela para sabermos o que aconteceu
+            // Mostra o erro real
             echo "<h3>Erro detalhado do Banco de Dados:</h3>";
             echo "<p>" . $e->getMessage() . "</p>";
             exit;

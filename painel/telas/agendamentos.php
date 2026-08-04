@@ -1,37 +1,14 @@
 <?php
-$host = 'localhost';
-$dbname = 'ferraztech_db';
-$username = 'root';
-$password = '';
+// Inclui o controller que centraliza as regras de busca do banco
+require_once '../controllers/controller_agendamentos.php';
 
-$agendamentos = [];
-$clientes = [];
-
-try {
-    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-    // 1. Busca todos os agendamentos cruzando com Clientes e Endereços ordenando pelo início
-    $sql = "SELECT a.*, c.nome as cliente_nome, e.logradouro, e.numero, e.bairro, e.cidade 
-            FROM agendamentos a
-            JOIN clientes c ON a.cliente_id = c.id
-            JOIN enderecos e ON a.endereco_id = e.id
-            ORDER BY a.data_inicio DESC";
-    $stmt = $pdo->query($sql);
-    $agendamentos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // 2. Busca lista de clientes que possuem solicitações/orçamentos pendentes
-    $stmtC = $pdo->query("SELECT DISTINCT c.id, c.nome 
-                          FROM clientes c 
-                          JOIN orcamentos o ON c.id = o.cliente_id 
-                          WHERE o.status = 'Pendente' 
-                          ORDER BY c.nome ASC");
-    $clientes = $stmtC->fetchAll(PDO::FETCH_ASSOC);
-
-} catch (Exception $e) {
-    $erro_db = "Erro ao carregar dados: " . $e->getMessage();
-}
+// Executa a função para obter os dados
+$resultado = carregarDadosAgendamentos();
+$agendamentos = $resultado['agendamentos'];
+$clientes = $resultado['clientes'];
+$erro_db = $resultado['erro_db'];
 ?>
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -62,6 +39,8 @@ try {
         <?php if (isset($_GET['status'])): ?>
             <?php if ($_GET['status'] == 'sucesso'): ?>
                 <div class="alert alert-success">Agendamento cadastrado com sucesso!</div>
+            <?php elseif ($_GET['status'] == 'cancelado_sucesso'): ?>
+                <div class="alert alert-success">Agendamento cancelado com sucesso! O horário foi liberado e a solicitação voltou a ficar pendente.</div>
             <?php elseif ($_GET['status'] == 'excecao_sucesso'): ?>
                 <div class="alert alert-success">Janela de exceção aberta com sucesso! Horário liberado para encaixes.</div>
             <?php elseif ($_GET['status'] == 'erro_conflito'): ?>
@@ -120,11 +99,21 @@ try {
                                         <?php echo htmlspecialchars($ag['status']); ?>
                                     </span>
                                 </td>
-                                <td>
-                                    <!-- Botão para abrir brecha/exceção durante o serviço longo -->
-                                    <button type="button" onclick="abrirModalExcecao(<?php echo $ag['id']; ?>)" style="background: #f59e0b; color: white; border: none; padding: 6px 10px; font-size: 12px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: background 0.2s;" title="Abrir janela de horário livre para orçamentos">
-                                        ⚡ Abrir Janela
-                                    </button>
+                                <td style="white-space: nowrap;">
+                                    <div style="display: inline-flex; gap: 6px; align-items: center;">
+                                        <!-- Botão do Raio -->
+                                        <button type="button" class="btn btn-warning btn-sm" onclick="abrirModalExcecao(<?php echo $agendamento['id']; ?>)" title="Adicionar Exceção de Horário" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: none; background: #fffb00; color: #fff; cursor: pointer;">
+                                            ⚡
+                                        </button>
+
+                                        <!-- Botão de Cancelar -->
+                                        <form action="../backend/cancelar_agendamento.php" method="GET" style="display:inline; margin:0;" onsubmit="return confirm('Deseja realmente cancelar este agendamento? O horário será liberado e a solicitação voltará a ficar pendente.');">
+                                            <input type="hidden" name="id" value="<?php echo $ag['id']; ?>">
+                                            <button type="submit" class="btn btn-danger btn-sm" title="Cancelar Agendamento" style="width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: none; background: #ef4444; color: #fff; font-weight: bold; cursor: pointer;">
+                                                ✕
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -149,7 +138,7 @@ try {
 
                 <div class="form-group">
                     <label for="select_cliente">Selecione o Cliente:</label>
-                    <select id="select_cliente" name="cliente_id" class="form-control" onchange="carregarDadosCliente(this.value)" required>
+                    <select id="select_cliente" name="cliente_id" class="form-control" onchange="carregarDadosCliente(this.value)" required style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;">
                         <option value="">-- Escolha um cliente com pendência --</option>
                         <?php foreach ($clientes as $cli): ?>
                             <option value="<?php echo $cli['id']; ?>"><?php echo htmlspecialchars($cli['nome']); ?></option>
@@ -158,9 +147,16 @@ try {
                 </div>
 
                 <div class="form-group">
-                    <label for="select_endereco_cliente">Selecione o Endereço do Serviço:</label>
-                    <select id="select_endereco_cliente" name="endereco_id" class="form-control" required>
-                        <option value="">-- Primeiro selecione um cliente --</option>
+                    <label for="tipo_trabalho">Tipo de Trabalho / Serviço:</label>
+                    <select id="tipo_trabalho" name="tipo_trabalho" class="form-control" required style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;">
+                        <option value="">-- Selecione o cliente primeiro --</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="select_endereco_cliente">Endereço do Serviço (Preenchido automaticamente):</label>
+                    <select id="select_endereco_cliente" name="endereco_id" class="form-control" required style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;">
+                        <option value="">-- Selecione o serviço primeiro --</option>
                     </select>
                 </div>
 
@@ -172,13 +168,6 @@ try {
                 <div class="form-group">
                     <label for="data_termino">Data e Hora de Previsão de Término:</label>
                     <input type="datetime-local" id="data_termino" name="data_termino" required style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;">
-                </div>
-
-                <div class="form-group">
-                    <label for="tipo_trabalho">Tipo de Trabalho / Serviço:</label>
-                    <select id="tipo_trabalho" name="tipo_trabalho" class="form-control" required style="width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc;">
-                        <option value="">-- Selecione o cliente primeiro --</option>
-                    </select>
                 </div>
 
                 <div class="form-group">
@@ -242,7 +231,8 @@ try {
             modalExcecao.style.display = "none";
         }
 
-        // Função para buscar via AJAX os endereços e orçamentos do cliente selecionado no modal
+        let enderecosGlobaisCache = [];
+
         function carregarDadosCliente(clienteId) {
             const selectEnd = document.getElementById("select_endereco_cliente");
             const selectServico = document.getElementById("tipo_trabalho");
@@ -253,46 +243,59 @@ try {
             inputOrcamentoId.value = "";
 
             if (!clienteId) {
-                selectEnd.innerHTML = '<option value="">-- Primeiro selecione um cliente --</option>';
-                selectServico.innerHTML = '<option value="">-- Selecione o tipo de serviço --</option>';
+                selectEnd.innerHTML = '<option value="">-- Selecione o cliente --</option>';
+                selectServico.innerHTML = '<option value="">-- Selecione o cliente --</option>';
                 return;
             }
 
-            // 1. Carrega Endereços
+            // 1. Busca os endereços primeiro
             fetch(`../backend/buscar_enderecos_json.php?cliente_id=${clienteId}`)
                 .then(res => res.json())
-                .then(data => {
+                .then(dataEnd => {
+                    enderecosGlobaisCache = dataEnd;
                     selectEnd.innerHTML = "";
-                    if (data.length > 0) {
-                        data.forEach((end, index) => {
+                    
+                    if (dataEnd.length > 0) {
+                        dataEnd.forEach((end, index) => {
                             let opt = document.createElement("option");
-                            opt.value = end.id;
+                            opt.value = String(end.id);
                             opt.text = `Endereço ${index + 1}: ${end.logradouro}, nº ${end.numero} - ${end.bairro}`;
                             selectEnd.appendChild(opt);
                         });
                     } else {
                         selectEnd.innerHTML = '<option value="">Nenhum endereço cadastrado</option>';
                     }
-                });
 
-            // 2. Carrega Solicitações Pendentes da Web
-            fetch(`../backend/buscar_orcamentos_json.php?cliente_id=${clienteId}`)
+                    // 2. Depois busca as solicitações/orçamentos
+                    return fetch(`../backend/buscar_orcamentos_json.php?cliente_id=${clienteId}`);
+                })
                 .then(res => res.json())
-                .then(data => {
+                .then(dataOrc => {
                     selectServico.innerHTML = '<option value="">-- Selecione a solicitação da web --</option>';
-                    if (data.length > 0) {
-                        data.forEach(orc => {
+                    
+                    if (dataOrc.length > 0) {
+                        dataOrc.forEach(orc => {
                             let opt = document.createElement("option");
                             opt.value = orc.tipo_solicitacao;
                             opt.setAttribute('data-orc-id', orc.id);
+                            opt.setAttribute('data-endereco-id', String(orc.endereco_id));
                             opt.text = `${orc.tipo_solicitacao} (Solicitado em: ${new Date(orc.data_solicitacao).toLocaleDateString()})`;
                             selectServico.appendChild(opt);
                         });
                         
+                        // Opção de Orçamento vinculada corretamente à solicitação pendente
                         let optOrc = document.createElement("option");
                         optOrc.value = "Orçamento";
-                        optOrc.text = "Orçamento Geral";
+                        optOrc.setAttribute('data-orc-id', dataOrc[0].id);
+                        optOrc.setAttribute('data-endereco-id', String(dataOrc[0].endereco_id));
+                        optOrc.text = "Orçamento (Vinculado à solicitação pendente)";
                         selectServico.appendChild(optOrc);
+
+                        // Seleciona automaticamente a primeira opção real e dispara a mudança
+                        if (selectServico.options.length > 1) {
+                            selectServico.selectedIndex = 1;
+                            triggerMudancaServico(selectServico);
+                        }
                     } else {
                         let opt = document.createElement("option");
                         opt.value = "Orçamento";
@@ -302,11 +305,31 @@ try {
                 });
         }
 
-        // Evento para capturar o ID do orçamento selecionado e injetar num input hidden
-        document.getElementById("tipo_trabalho").addEventListener("change", function() {
-            let selectedOption = this.options[this.selectedIndex];
+        // Função isolada para aplicar o ID do orçamento e marcar o endereço correto com precisão
+        function triggerMudancaServico(element) {
+            let selectedOption = element.options[element.selectedIndex];
+            if (!selectedOption) return;
+
             let orcId = selectedOption.getAttribute('data-orc-id');
+            let enderecoId = selectedOption.getAttribute('data-endereco-id');
+
             document.getElementById("orcamento_id").value = orcId || "";
+
+            // Se a opção possui um endereço específico amarrado, seleciona ele automaticamente
+            if (enderecoId) {
+                const selectEnd = document.getElementById("select_endereco_cliente");
+                for (let i = 0; i < selectEnd.options.length; i++) {
+                    if (selectEnd.options[i].value === enderecoId) {
+                        selectEnd.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Evento de mudança manual pelo usuário
+        document.getElementById("tipo_trabalho").addEventListener("change", function() {
+            triggerMudancaServico(this);
         });
 
         // Fechar modais ao clicar fora
